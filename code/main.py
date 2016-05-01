@@ -10,12 +10,14 @@ import scipy.constants as con
 #########
 
 DeltaX = 0.001 # Spatial resolution
-EndValue = 2 # Boundaries for the interval
+EndValue = 10 # Boundaries for the interval
 ScalingFactor = 1 # For the potential
 # Precision for the transition from left to right solution
-TransitionPrecision = 10**(-5)
-InitialEnergy = 0
-FinalEnergy = 5
+TransitionPrecision = 10**(-3)
+InitialEnergy = 0.1
+FinalEnergy = 10
+EnergyStepSize = 0.1
+xMatch = 0
 
 ########
 # Code #
@@ -29,7 +31,8 @@ FinalEnergy = 5
 
 # Returns the double well potential V(x)=A/2*(1-x**2)**2 at point x
 def GetPotential(x):
-    return ScalingFactor/2*(1-x**2)**2
+    #return ScalingFactor/2*(1-x**2)**2
+    return x**2
 
 # Returns the double well potential V(x)=A/2*(1-x**2)**2 for all data points
 # in the interval [-EndValue, EndValue] with a resolution of DeltaX.
@@ -63,60 +66,68 @@ def IntegrateStationarySchroedinger(Energy, x0):
     InitialValues = [Psi, Phi]
     integrator.set_initial_value(InitialValues, x0).set_f_params(Energy)
     while integrator.successful() :
-        xList.append(integrator.t)
-        DataList.append(integrator.integrate(integrator.t + dx))
-        if dx > 0 and integrator.t > xMatch:
+        integrator.integrate(integrator.t + dx)
+        #DataList.append(integrator.integrate(integrator.t + dx))
+        #XList.append(integrator.t)
+        if dx > 0 and integrator.t >= xMatch:
             return integrator.y
-        elif dx < 0 and integrator.t < xMatch:
+        elif dx < 0 and integrator.t <= xMatch:
             return integrator.y
-
-# Integrates Psi''(x)=f(x)*Psi(x) from left and right to XMatch and returns
-# the value of both functions and their derivative.
-#def IntegrateToXMatch(Energy):
-    
 
 # Returns W(E)=Psi'_+(XMatch)Psi_-(XMatch) - Psi_-'(XMatch)Psi_+(XMatch).
 # The root of W(E) equals an eigenvalue of the system.
-#def GetW
+def GetW(Energy):
+    PsiPlus = IntegrateStationarySchroedinger(Energy, EndValue)
+    PsiMinus = IntegrateStationarySchroedinger(Energy, -EndValue)
+    return (PsiPlus[1]*PsiMinus[0] - PsiMinus[1]*PsiPlus[0])
 
-integrator = ode(SecondSpatialDerivative).set_integrator('dopri5')
-Energy = 2
-xMinus = -EndValue
-PsiMinus = np.exp(np.sqrt(Energy)*xMinus)
-PhiMinus = np.sqrt(Energy)*PsiMinus
-InitialValues = [PsiMinus, PhiMinus]
-integrator.set_initial_value(InitialValues, xMinus).set_f_params(Energy)
-xMatch = EndValue
-xList1 = []
-DataList1 = []
-while integrator.successful() and integrator.t < xMatch:
-    xList1.append(integrator.t)
-    DataList1.append(integrator.integrate(integrator.t + DeltaX))
+def BisectionW(LowerBound, UpperBound):
+    Accuracy = 10**(-6)
+    NewBound = (LowerBound + UpperBound)/2
+    NewW = GetW(NewBound)
+    while np.absolute(UpperBound) - np.absolute(LowerBound) > Accuracy:
+        if NewW < 0:
+            LowerBound = NewBound
+        else:
+            UpperBound = NewBound
+        NewBound = (LowerBound + UpperBound)/2
+        NewW = GetW(NewBound)
+    return NewBound
 
-xPlus = EndValue
-PsiPlus = np.exp(-np.sqrt(Energy)*xPlus)
-PhiPlus = -np.sqrt(Energy)*PsiPlus
-InitialValues = [PsiPlus, PhiPlus]
-integrator.set_initial_value(InitialValues, xPlus).set_f_params(Energy)
-OtherxList = []
-OtherPsiList = []
-while integrator.successful() and integrator.t > -xMatch:
-    OtherxList.append(integrator.t)
-    OtherPsiList.append(integrator.integrate(integrator.t - DeltaX)[0])
-#
-#
-DataList =[]
-xList = []
-xMatch = 0
-IntegrateStationarySchroedinger(2, 2)
-PsiList = [x[0] for x in DataList]
-PsiList1 = [x[0] for x in DataList1]
-#plt.figure(1)
-plt.plot(xList, PsiList)
-plt.plot(xList1, PsiList1)
-plt.plot(OtherxList, OtherPsiList)
-plt.xlim(-2, 2)
-plt.show()
-#x = np.arange(-1.5, 1.5 + DeltaX, DeltaX)
-#plt.plot(x, GetPotential(x))
+# Bisection to find the first four roots of W(E)
+def Find4RootsW():
+    Accuracy = 10**(-5)
+    LastValue = [InitialEnergy, GetW(InitialEnergy)]
+    Roots = []
+    for Energy in np.arange(InitialEnergy + EnergyStepSize, \
+                            FinalEnergy + EnergyStepSize, EnergyStepSize):
+        print("Energy = %f" % Energy)
+        NextValue = [Energy, GetW(Energy)]
+        if np.absolute(NextValue[1]) < Accuracy:
+            Roots.append(NextValue[0])
+        elif NextValue[1] < 0 and LastValue[1] > 0:
+            Roots.append(BisectionW(NextValue[0], LastValue[0]))
+        elif NextValue[1] > 0 and LastValue[1] < 0:
+            Roots.append(BisectionW(LastValue[0], NextValue[0]))
+        LastValue = NextValue
+        if len(Roots) == 4:
+            return Roots
+    print(Roots)
+    return "Not enough roots found. Enlarge Energy-width"
+
+print(Find4RootsW())
+#DataList = []
+#XList = []
+##xMatch = -1
+#TestEnergy = 3
+#IntegrateStationarySchroedinger(TestEnergy, EndValue)
+#PsiList = [X[0] for X in DataList]
+#DataList = []
+#xMatch = 1
+#XList1 = XList
+#XList = []
+#IntegrateStationarySchroedinger(TestEnergy, -EndValue)
+#PsiList1 = [X[0] for X in DataList]
+#plt.plot(XList1, PsiList)
+#plt.plot(XList, PsiList1)
 #plt.show()
