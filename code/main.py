@@ -3,7 +3,8 @@
 import numpy as np
 from scipy.integrate import ode
 import matplotlib.pyplot as plt
-import scipy.constants as con
+import os
+import math
 
 #########
 # Input #
@@ -11,35 +12,26 @@ import scipy.constants as con
 
 DeltaX = 0.001 # Spatial resolution
 EndValue = 10 # Boundaries for the interval
-ScalingFactor = 1 # For the potential
+ScalingFactor = 5. # For the potential
 # Precision for the transition from left to right solution
 TransitionPrecision = 10**(-3)
-InitialEnergy = 0.1
-FinalEnergy = 10
-EnergyStepSize = 0.1
-xMatch = 0
+InitialEnergy = 0.01 # Initial energy to be tested
+FinalEnergy = 30 # Final energy to be tested
+EnergyStepSize = 0.1 # Step size for the energy
+xSym = 0 # Point where the solutions should match (ideally the symmetry point)
+ReverseList = [2, 4] # List of antisymmetric solutions
+# Scaling factor for the initial conditions, to offset overflow
+ScalingFactorPsi = 10**(-150)
+EigenvaluesEigenfunctionX = (-6., 6.) # X-Range to be plotted for the scheme
+EigenvaluesEigenfunctionY = (0., 13.) # Y-Range to be plotted for the scheme
 
 ########
 # Code #
 ########
 
-# Returns the number of data points in the interval [-EndValue, EndValue] with
-# a resolution DeltaX. EndValue should be a multiple of DeltaX to get good
-# solutions.
-#def GetLengthOfArray():  
-#    return int(2*EndValue/DeltaX)
-
 # Returns the double well potential V(x)=A/2*(1-x**2)**2 at point x
 def GetPotential(x):
-    #return ScalingFactor/2*(1-x**2)**2
-    return x**2
-
-# Returns the double well potential V(x)=A/2*(1-x**2)**2 for all data points
-# in the interval [-EndValue, EndValue] with a resolution of DeltaX.
-#def GetPotentialArray():
-#    x = np.arange(-EndValue, EndValue + DeltaX, DeltaX)
-#    Potential = GetPotential(x)
-#    return Potential
+    return ScalingFactor/2*(1-x**2)**2
 
 # Returns the function f(x) from Psi''(x) = f(x)*Psi(x) by breaking the second
 # order derivative in a coupled system of first order derivatives 
@@ -52,9 +44,10 @@ def SecondSpatialDerivative(x, FunctionValues, Energy):
 # Integrates the stationary Schroedinger equation and returns Psi and Phi at
 # the match point. Beware, that Phi_+ is the negative derivative of Psi at
 # the match point.
-def IntegrateStationarySchroedinger(Energy, x0):
+def IntegrateStationarySchroedinger(Energy, x0, xMatch = xSym, plot = False, \
+                                    PsiList = [], XList = []):
     integrator = ode(SecondSpatialDerivative).set_integrator('dopri5')
-    Psi = np.exp(-np.sqrt(Energy)*np.absolute(x0))
+    Psi = ScalingFactorPsi*np.exp(-np.sqrt(Energy)*np.absolute(x0))
     if x0 < 0:
         assert xMatch > x0, "Initial value is smaller than match point"
         Phi = np.sqrt(Energy)*Psi
@@ -67,8 +60,9 @@ def IntegrateStationarySchroedinger(Energy, x0):
     integrator.set_initial_value(InitialValues, x0).set_f_params(Energy)
     while integrator.successful() :
         integrator.integrate(integrator.t + dx)
-        #DataList.append(integrator.integrate(integrator.t + dx))
-        #XList.append(integrator.t)
+        if plot:
+            PsiList.append(integrator.y[0])
+            XList.append(integrator.t)
         if dx > 0 and integrator.t >= xMatch:
             return integrator.y
         elif dx < 0 and integrator.t <= xMatch:
@@ -81,6 +75,7 @@ def GetW(Energy):
     PsiMinus = IntegrateStationarySchroedinger(Energy, -EndValue)
     return (PsiPlus[1]*PsiMinus[0] - PsiMinus[1]*PsiPlus[0])
 
+# Bisection to find the roots of W
 def BisectionW(LowerBound, UpperBound):
     Accuracy = 10**(-6)
     NewBound = (LowerBound + UpperBound)/2
@@ -94,11 +89,15 @@ def BisectionW(LowerBound, UpperBound):
         NewW = GetW(NewBound)
     return NewBound
 
-# Bisection to find the first four roots of W(E)
+# Calculates W(E) at multiple points in the given energy-range and the looks
+# for a change in the sign. If it finds one it calls BisectionW to finnd the
+# root.
 def Find4RootsW():
+    EnergyList, WList, Roots = ([] for i in range(3))
     Accuracy = 10**(-5)
     LastValue = [InitialEnergy, GetW(InitialEnergy)]
-    Roots = []
+    EnergyList.append(InitialEnergy)
+    WList.append(LastValue[1])
     for Energy in np.arange(InitialEnergy + EnergyStepSize, \
                             FinalEnergy + EnergyStepSize, EnergyStepSize):
         print("Energy = %f" % Energy)
@@ -110,24 +109,74 @@ def Find4RootsW():
         elif NextValue[1] > 0 and LastValue[1] < 0:
             Roots.append(BisectionW(LastValue[0], NextValue[0]))
         LastValue = NextValue
+        EnergyList.append(LastValue[0])
+        WList.append(LastValue[1])
         if len(Roots) == 4:
             return Roots
-    print(Roots)
     return "Not enough roots found. Enlarge Energy-width"
 
-print(Find4RootsW())
-#DataList = []
-#XList = []
-##xMatch = -1
-#TestEnergy = 3
-#IntegrateStationarySchroedinger(TestEnergy, EndValue)
-#PsiList = [X[0] for X in DataList]
-#DataList = []
-#xMatch = 1
-#XList1 = XList
-#XList = []
-#IntegrateStationarySchroedinger(TestEnergy, -EndValue)
-#PsiList1 = [X[0] for X in DataList]
-#plt.plot(XList1, PsiList)
-#plt.plot(XList, PsiList1)
-#plt.show()
+# Normalize Psi by calculating the integral of |Psi|^2  over the interval and 
+# then diving by the result.
+def NormalizePsi(xArray, PsiArray):
+    NormalizeParameter = 0
+    for i in range(0, len(xArray)):
+        NormalizeParameter += DeltaX*PsiArray[i]*PsiArray[i]
+    print(NormalizeParameter)
+    PsiArray = PsiArray/np.sqrt(NormalizeParameter)
+    return PsiArray
+
+# Plots the eigenfunctions for given roots
+def PlotEigenfunctions(Roots):
+    Iterator = 1
+    PsiSolutions = []
+    for Element in Roots:
+        plt.figure(Iterator)
+        plt.xlabel("x")
+        plt.ylabel(r"$\Psi$(x)")
+        PsiMinusList, XMinusList, PsiPlusList, XPlusList = \
+                                                          ([] for i in range(4))
+        IntegrateStationarySchroedinger(Element, -EndValue, 0, True, \
+                                        PsiMinusList, XMinusList)
+        IntegrateStationarySchroedinger(Element, EndValue, 0, True, \
+                                        PsiPlusList, XPlusList)
+        if Iterator in ReverseList:
+           PsiMinusList = [-i for i in PsiMinusList]
+        XArray = np.asarray(XMinusList[0:-1] + XPlusList[::-1])
+        PsiArray = np.asarray(PsiMinusList[0:-1] + PsiPlusList[::-1])
+        PsiArray = NormalizePsi(XArray, PsiArray)
+        PsiSolutions.append([XArray, PsiArray])
+        plt.plot(XArray, PsiArray)
+        plt.savefig("eigenfunction_%i.eps" % Iterator, format = "eps", \
+                    dpi = 1000)
+        Iterator += 1
+    return PsiSolutions
+
+# Plots a scheme, where the eigenfunctions are offset by their eigenvalue and
+# also plots the potetnial, to get an overview over the solutions in context 
+# of their energys.
+def PlotScheme(Roots, PsiSolutions):
+    plt.figure(len(Roots) + 1)
+    plt.title("ScalingFactor = %f" % ScalingFactor)
+    plt.xlabel("x")
+    plt.ylabel("Energy")
+    XCoordinates = np.linspace(EigenvaluesEigenfunctionX[0], \
+                               EigenvaluesEigenfunctionX[1], 1000)
+    plt.plot(XCoordinates, GetPotential(XCoordinates))
+    Iterator = 0
+    for Element in Roots:
+        plt.axhline(y = Element, xmin = EigenvaluesEigenfunctionX[0],\
+         xmax = EigenvaluesEigenfunctionX[1])
+        plt.plot(PsiSolutions[Iterator][0], PsiSolutions[Iterator][1] + Element)
+        Iterator += 1
+    plt.ylim(EigenvaluesEigenfunctionY)
+    plt.xlim(EigenvaluesEigenfunctionX)
+    plt.savefig("eigenfunction_eigenvalue.eps", format = "eps", dpi = 1000)
+
+Results = Find4RootsW()
+if type(Results) is str:
+ print(Results)
+ exit()
+print(Results)
+os.chdir("../plots")
+PsiSolutions = PlotEigenfunctions(Results)
+PlotScheme(Results, PsiSolutions)
