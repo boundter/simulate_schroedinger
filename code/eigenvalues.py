@@ -18,7 +18,7 @@ TransitionPrecision = 10**(-3)
 InitialEnergy = 0.01 # Initial energy to be tested
 FinalEnergy = 30 # Final energy to be tested
 EnergyStepSize = 0.1 # Step size for the energy
-xSym = 0 # Point where the solutions should match (ideally the symmetry point)
+XSym = 0 # Point where the solutions should match (ideally the symmetry point)
 ReverseList = [2, 4] # List of antisymmetric solutions
 # Scaling factor for the initial conditions, to offset overflow
 ScalingFactorPsi = 10**(-150)
@@ -30,42 +30,42 @@ EigenvaluesEigenfunctionY = (0., 13.) # Y-Range to be plotted for the scheme
 ########
 
 # Returns the double well potential V(x)=A/2*(1-x**2)**2 at point x
-def GetPotential(x):
-    return ScalingFactor/2*(1-x**2)**2
+def GetPotential(X):
+    return ScalingFactor/2*(1-X**2)**2
 
 # Returns the function f(x) from Psi''(x) = f(x)*Psi(x) by breaking the second
 # order derivative in a coupled system of first order derivatives 
 # Psi'(x) = Phi(x) and Phi'(x) = f(x)*Psi(x)
-def SecondSpatialDerivative(x, FunctionValues, Energy):
+def SecondSpatialDerivative(X, FunctionValues, Energy):
     Psi, Phi = FunctionValues
-    f = (GetPotential(x) - Energy)
+    f = (GetPotential(X) - Energy)
     return [Phi, f*Psi]
 
 # Integrates the stationary Schroedinger equation and returns Psi and Phi at
 # the match point. Beware, that Phi_+ is the negative derivative of Psi at
 # the match point.
-def IntegrateStationarySchroedinger(Energy, x0, xMatch = xSym, plot = False, \
+def IntegrateStationarySchroedinger(Energy, X0, XMatch = XSym, plot = False, \
                                     PsiList = [], XList = []):
     integrator = ode(SecondSpatialDerivative).set_integrator('dopri5')
-    Psi = ScalingFactorPsi*np.exp(-np.sqrt(Energy)*np.absolute(x0))
-    if x0 < 0:
-        assert xMatch > x0, "Initial value is smaller than match point"
+    Psi = ScalingFactorPsi*np.exp(-np.sqrt(Energy)*np.absolute(X0))
+    if X0 < 0:
+        assert XMatch > X0, "Initial value is smaller than match point"
         Phi = np.sqrt(Energy)*Psi
-        dx = DeltaX
+        dX = DeltaX
     else:
-        assert xMatch < x0, "Initial value is bigger than match point" 
+        assert XMatch < X0, "Initial value is bigger than match point" 
         Phi = -np.sqrt(Energy)*Psi
-        dx = -DeltaX
+        dX = -DeltaX
     InitialValues = [Psi, Phi]
-    integrator.set_initial_value(InitialValues, x0).set_f_params(Energy)
+    integrator.set_initial_value(InitialValues, X0).set_f_params(Energy)
     while integrator.successful() :
-        integrator.integrate(integrator.t + dx)
+        integrator.integrate(integrator.t + dX)
         if plot:
             PsiList.append(integrator.y[0])
             XList.append(integrator.t)
-        if dx > 0 and integrator.t >= xMatch:
+        if dX > 0 and integrator.t >= XMatch:
             return integrator.y
-        elif dx < 0 and integrator.t <= xMatch:
+        elif dX < 0 and integrator.t <= XMatch:
             return integrator.y
 
 # Returns W(E)=Psi'_+(XMatch)Psi_-(XMatch) - Psi_-'(XMatch)Psi_+(XMatch).
@@ -117,9 +117,9 @@ def Find4RootsW():
 
 # Normalize Psi by calculating the integral of |Psi|^2  over the interval and 
 # then diving by the result.
-def NormalizePsi(xArray, PsiArray):
+def NormalizePsi(XArray, PsiArray):
     NormalizeParameter = 0
-    for i in range(0, len(xArray)):
+    for i in range(0, len(XArray)):
         NormalizeParameter += DeltaX*PsiArray[i]*PsiArray[i]
     print(NormalizeParameter)
     PsiArray = PsiArray/np.sqrt(NormalizeParameter)
