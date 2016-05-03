@@ -24,6 +24,7 @@ ReverseList = [2, 4] # List of antisymmetric solutions
 ScalingFactorPsi = 10**(-150)
 EigenvaluesEigenfunctionX = (-6., 6.) # X-Range to be plotted for the scheme
 EigenvaluesEigenfunctionY = (0., 13.) # Y-Range to be plotted for the scheme
+DataFileName = "data/eigenfunctions.csv"
 
 ########
 # Code #
@@ -57,6 +58,9 @@ def IntegrateStationarySchroedinger(Energy, X0, XMatch = XSym, plot = False, \
         Phi = -np.sqrt(Energy)*Psi
         dX = -DeltaX
     InitialValues = [Psi, Phi]
+    if plot:
+        PsiList.append(Psi)
+        XList.append(X0)
     integrator.set_initial_value(InitialValues, X0).set_f_params(Energy)
     while integrator.successful() :
         integrator.integrate(integrator.t + dX)
@@ -146,7 +150,7 @@ def PlotEigenfunctions(Roots):
         PsiArray = NormalizePsi(XArray, PsiArray)
         PsiSolutions.append([XArray, PsiArray])
         plt.plot(XArray, PsiArray)
-        plt.savefig("eigenfunction_%i.eps" % Iterator, format = "eps", \
+        plt.savefig("plots/eigenfunction_%i.eps" % Iterator, format = "eps", \
                     dpi = 1000)
         Iterator += 1
     return PsiSolutions
@@ -170,13 +174,25 @@ def PlotScheme(Roots, PsiSolutions):
         Iterator += 1
     plt.ylim(EigenvaluesEigenfunctionY)
     plt.xlim(EigenvaluesEigenfunctionX)
-    plt.savefig("eigenfunction_eigenvalue.eps", format = "eps", dpi = 1000)
+    plt.savefig("plots/eigenfunction_eigenvalue.eps", format = "eps", \
+                dpi = 1000)
 
-Results = Find4RootsW()
-if type(Results) is str:
- print(Results)
- exit()
-print(Results)
-os.chdir("../plots")
-PsiSolutions = PlotEigenfunctions(Results)
-PlotScheme(Results, PsiSolutions)
+if __name__ == "__main__":
+
+    Results = Find4RootsW()
+    if type(Results) is str:
+     print(Results)
+     exit()
+    print(Results)
+    #os.chdir("plots")
+    PsiSolutions = PlotEigenfunctions(Results)
+    PlotScheme(Results, PsiSolutions)
+
+    #os.chdir("../data")
+    DataFile = open(DataFileName, "w")
+    #DataFile.write("ScalingFactor= %f\n" % ScalingFactor)
+    for i in range(0, len(PsiSolutions[0][0])):
+        DataFile.write("%g %g %g %g %g\n" % (PsiSolutions[0][0][i], \
+                       PsiSolutions[0][1][i], PsiSolutions[1][1][i], \
+                       PsiSolutions[2][1][i], PsiSolutions[3][1][i]))
+    DataFile.close()
