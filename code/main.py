@@ -3,6 +3,7 @@
 import numpy as np
 from scipy.integrate import ode
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 import os
 import math
 
@@ -26,13 +27,17 @@ ScalingFactorPsi = 10**(-150)
 EigenvaluesEigenfunctionX = (-6., 6.) # X-Range to be plotted for the scheme
 EigenvaluesEigenfunctionY = (0., 13.) # Y-Range to be plotted for the scheme
 BisectionAccuracy = 10**(-6)
+NumberRoots = 4
 
 #Task2
-dT = 0.01
+dT = 0.001
+TStart = 0.
+TEnd = 10.
+TStep = float(int(1/30/dT))
 
-##########
-# Task 1 #
-##########
+####################
+# Functions Task 1 #
+####################
 
 # Returns the double well potential V(x)=A/2*(1-x**2)**2 at point x
 def GetPotential(X):
@@ -87,7 +92,7 @@ def GetW(Energy):
 def BisectionW(LowerBound, UpperBound):
     NewBound = (LowerBound + UpperBound)/2
     NewW = GetW(NewBound)
-    while np.absolute(UpperBound) - np.absolute(LowerBound) > BisectionAccuracy:
+    while np.absolute(UpperBound) - np.absolute(LowerBound) >BisectionAccuracy:
         if NewW < 0:
             LowerBound = NewBound
         else:
@@ -111,7 +116,7 @@ def Find4RootsW():
         elif NextValue[1] > 0 and LastValue[1] < 0:
             Roots.append(BisectionW(LastValue[0], NextValue[0]))
         LastValue = NextValue
-        if len(Roots) == 4:
+        if len(Roots) == NumberRoots:
             return Roots
     return "Not enough roots found. Enlarge Energy-width"
 
@@ -183,19 +188,10 @@ def PlotScheme(Roots, Psi):
     plt.savefig("plots/eigenfunction_eigenvalue.eps", format = "eps", \
                 dpi = 1000)
 
-# Uncomment the following part to solve task 1
+####################
+# Functions Task 2 #
+####################
 
-Results = Find4RootsW()
-if type(Results) is str:
- print(Results)
- exit()
-print(Results)
-PsiSolutions = PlotEigenfunctions(Results)
-PlotScheme(Results, PsiSolutions)
-
-##########
-# Task 2 #
-##########
 # Generates a numpy array, that holds the potetnial for every point in the 
 # interval [BeginInterval, EndInterval] with resolution dX
 def GetPotentialArray(BeginInterval, EndInterval, dX):
@@ -203,22 +199,142 @@ def GetPotentialArray(BeginInterval, EndInterval, dX):
   PotentialArray = GetPotential(PotentialArray)
   return PotentialArray
 
+# Function to test, if (1 + 1/2*i*H*dT)Psi^{n+1} = (1 - 1/2*i*H*dT)Psi^{n}
+def TestFunction(Hamiltonian, F, Psi):
+    H = Hamiltonian
+    H = [-Element for Element in H]
+    FLeft = GetRightSide(dT, H, Psi)
+    print((FLeft - F)[0], (FLeft - F)[10000], (FLeft - F)[-1])
+
+# Generates the Hamiltonian, which is a 3-diag matrix as three Vectors
+def GetHamiltonian(dX, PotentialArray):
+    A = np.zeros((len(PotentialArray), ), dtype = np.complex_)
+    A.fill(1/(dX*dX))
+    B = -2/(dX*dX) + PotentialArray
+    B = B.astype(np.complex_)
+    return [A, B, A]
+
+# Solves the linear system given by a 3-diag matrix (given as 3 vecotrs A B, C)
+# and the left side as F
+def SolveThreeDiag(A, B, C, F):
+    Alpha = np.zeros((len(F), ), dtype = np.complex_)
+    Alpha[0] = F[0]/B[0]
+    Beta = np.zeros((len(F), ), dtype = np.complex_)
+    Beta[0] = -C[0]/B[0]
+    for i in range(1, len(F)):
+        Alpha[i] = (F[i] - A[i]*Alpha[i-1])/(B[i] + A[i]*Beta[i-1])
+        Beta[i] = -C[i]/(B[i] + A[i]*Beta[i-1])
+    x = np.zeros((len(F),), dtype = np.complex_)
+    x[-1] = Alpha[-1]
+    for i in range(2, len(F)+1):
+        x[-i] = Alpha[-i] + Beta[-i]*x[-i+1]
+    return x
+
+# Calculates (1 - 1/2*i*H*dT)Psi^{n}
+def GetRightSide(dT, Hamiltonian, InitialCondition):
+    H = [-0.5j*dT*Vec for Vec in Hamiltonian]
+    A = H[0]
+    B = 1 + H[1]
+    C = H[2]
+    F = np.zeros((len(InitialCondition),), dtype = np.complex_)
+    F[0] = B[0]*InitialCondition[0] + C[0]*InitialCondition[1]
+    for i in range(1, len(InitialCondition) - 1):
+        F[i] = A[i]*InitialCondition[i-1] + B[i]*InitialCondition[i] + \
+               C[i]*InitialCondition[i+1]
+    F[-1] = A[-1]*InitialCondition[-2] + B[-1]*InitialCondition[-1]
+    return F
+
+# Calculates Psi^{n+1} from (1 + 1/2*i*H*dT)Psi^{n+1} = (1 - 1/2*i*H*dT)Psi^{n}
+def GetPsi(dT, Hamiltonian, F):
+    H = [0.5j*dT*Vec for Vec in Hamiltonian]
+    A = H[0]
+    B = 1 + H[1]
+    C = H[2]
+    Psi = SolveThreeDiag(A, B, C, F)
+    #TestFunction(Hamiltonian, F, Psi)
+    return Psi
+
 # Integrates the Schroedinger equation one step in time using the 
 # Crank-Nicholson-Scheme
 def IntegrateSchroedinger(dX, InitialCondition, PotentialArray):
-  dX2 = dX*dX
-  NumberPoints = len(InitialCondition)
-  A = -0.25j*dT/dX2
-  B = 0.5 + 0.5j*dT/dX2 + 0.25j*dT*PotentialArray
-  Alpha = [InitialCondition[0]/B]
-  Beta = [-A/B]
-  for i in range(1, NumberPoints):
-    Alpha.append((InitialCondition[i] - Alpha[i-1]*A)/(A*Beta[i-1] + B[i]))
-    Beta.append(-A/(A*Beta[i-1] + B[i]))
-  Chi = np.zeros((NumberPoints,), dtype = np.complex_)
-  Chi[-1] = Alpha[-1]
-  for i in range(1, NumberPoints):
-    l = NumberPoints - i - 1
-    Chi[l] = Alpha[l] - Beta[l]*Chi[l+1]
-  return Chi - InitialCondition
+  Hamiltonian = GetHamiltonian(dX, PotentialArray)
+  F = GetRightSide(dT, Hamiltonian, InitialCondition)
+  Psi = GetPsi(dT, Hamiltonian, F)
+  return Psi
 
+
+# Animation
+def init():
+    PotentialLine.set_data([], [])
+    PsiLine.set_data([], [])
+    time_text.set_text('')
+    return (PotentialLine, PsiLine)
+
+# Animation
+def animate(j):
+    x = np.real(PsiEvolution[0])
+    y = np.absolute(PsiEvolution[j+1])**2
+    PsiLine.set_data(x, y)
+    PotentialLine.set_data(X, GetPotential(X)/10)
+    time_text.set_text('time = %.2f' % (j*dT*TStep))
+    return(PotentialLine, PsiLine, time_text)
+
+#Animnation
+def PlotAnimation(Iterator):   
+    anim = animation.FuncAnimation(fig, animate, init_func=init, blit=True, \
+                                   frames = len(PsiEvolution) - 1)
+    anim.save('plots/animation_%i.mp4' % (Iterator - NumberRoots - 1), \
+              extra_args=['-vcodec', 'libx264'], fps = 1/(dT*TStep))
+
+##########
+# Task 1 #
+##########
+# Find the 4 eigenvalues
+Results = Find4RootsW()
+if type(Results) is str:
+ print(Results)
+ exit()
+print(Results)
+# Plot the eigenfnctions
+Eigenfunctions = PlotEigenfunctions(Results)
+PlotScheme(Results, Eigenfunctions)
+
+##########
+# Task 2 #
+##########
+#Calculate the evolution in time of the 4 eigenfuntions
+Eigenfunctions = Eigenfunctions.astype(np.complex_)
+PotentialArray = GetPotentialArray(-Boundary, Boundary, DeltaX)
+Iterator = NumberRoots + 2
+# The loop calculates psi^{n+1} for every time step and saves every TStep 
+# array for the animation
+for Element in Eigenfunctions[1:]:
+    print("==Starting next Eigenfunction==")
+    Psi = Element
+    PsiEvolution = [Eigenfunctions[0], Psi]
+    Counter = 1
+    for i in np.arange(TStart, TEnd + dT, dT):
+        Psi = IntegrateSchroedinger(DeltaX, Psi, PotentialArray)
+        if i%1 < 0.5*dT:  print("t = %f" %i)
+        # Decide if the current values should be saved for the animation
+        if Counter == TStep:
+            PsiEvolution.append(Psi)
+            Counter = -1
+        Counter += 1
+    # Checks, if the solution is still normalized
+    print("Probability before = %f" % \
+          CheckProbability(PsiEvolution[1], -Boundary, Boundary, -Boundary, \
+                           DeltaX))
+    print("Probability after = %f" % \
+          CheckProbability(PsiEvolution[-1], -Boundary, Boundary, -Boundary, \
+                           DeltaX))
+    # The rest is just the animation
+    fig = plt.figure(Iterator)
+    ax = fig.add_subplot(111, autoscale_on=False, xlim=(-2.5, 2.5),\
+                         ylim=(0, 1))
+    PsiLine, = ax.plot([], [], lw=2)
+    PotentialLine,  = ax.plot([], [], lw=2)
+    time_text = ax.text(0.02, 0.95, '', transform=ax.transAxes)
+    X = np.linspace(-2.6, 2.6, 1000) 
+    PlotAnimation(Iterator)
+    Iterator += 1
