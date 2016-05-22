@@ -1,5 +1,5 @@
 # Makefile for simulate_schroedinger
 
 # Replots the Scheme
-plots/eigenfunction_eigenvalue.eps, plots/animation_1.mp4: code/main.py
-	./code/main.py
+plots/*.eps, plots/*.mp4: code/main2.py
+	./code/main2.py

@@ -14,7 +14,7 @@ import math
 #Task 1
 DeltaX = 0.001 # Spatial resolution
 Boundary = 10 # Boundaries for the interval
-ScalingFactor = 5. # For the potential
+ScalingFactor = 1. # For the potential
 # Precision for the transition from left to right solution
 TransitionPrecision = 10**(-3)
 InitialEnergy = 0.01 # Initial energy to be tested
@@ -42,6 +42,7 @@ TStep = float(int(1/30/dT))
 # Returns the double well potential V(x)=A/2*(1-x**2)**2 at point x
 def GetPotential(X):
     return ScalingFactor/2*(1-X**2)**2
+    #return X**2
 
 # Returns the function f(x) from Psi''(x) = f(x)*Psi(x) by breaking the second
 # order derivative in a coupled system of first order derivatives 
