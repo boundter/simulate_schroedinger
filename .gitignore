@@ -1,0 +1,41 @@
+# Mac-trash
+.DS_Store
+
+# executables
+*.o
+
+# jupyter-trash
+.ipynb_checkpoints
+
+# python-trash
+__pycache__
+
+# testfiles
+*test*
+
+# tex-files
+*.aux
+*.glo
+*.idx
+*.log
+*.toc
+*.ist
+*.acn
+*.acr
+*.alg
+*.bbl
+*.blg
+*.dvi
+*.glg
+*.gls
+*.ilg
+*.ind
+*.lof
+*.lot
+*.maf
+*.mtc
+*.mtc1
+*.out
+*.synctex.gz
+*.fdb_latexmk
+*.fls
